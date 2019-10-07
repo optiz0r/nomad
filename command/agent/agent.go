@@ -56,6 +56,7 @@ type Agent struct {
 	logger     log.Logger
 	httpLogger log.Logger
 	logOutput  io.Writer
+	logWriter  *logWriter
 
 	// consulService is Nomad's custom Consul client for managing services
 	// and checks.
