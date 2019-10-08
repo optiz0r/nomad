@@ -48,6 +48,7 @@ func (c *MonitorCommand) Run(args []string) int {
 	client, err := c.Meta.Client()
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Error initializing client: %s", err))
+		c.Ui.Error(commandErrorText(c))
 		return 1
 	}
 
@@ -55,6 +56,7 @@ func (c *MonitorCommand) Run(args []string) int {
 	logCh, err := client.Agent().Monitor(logLevel, eventDoneCh, nil)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Error starting monitor: %s", err))
+		c.Ui.Error(commandErrorText(c))
 		return 1
 	}
 
