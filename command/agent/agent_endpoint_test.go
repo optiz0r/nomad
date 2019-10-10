@@ -255,7 +255,7 @@ func TestHTTP_AgentMonitor(t *testing.T) {
 
 	httpTest(t, nil, func(s *TestAgent) {
 		{
-			req, err := http.NewRequest("GET", "/v1/agent/monitor?loglevel=unkown", nil)
+			req, err := http.NewRequest("GET", "/v1/agent/monitor?loglevel=unknown", nil)
 			require.Nil(t, err)
 			resp := newClosableRecorder()
 

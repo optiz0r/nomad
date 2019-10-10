@@ -267,7 +267,9 @@ func TestAgent_Monitor(t *testing.T) {
 
 	agent := c.Agent()
 
-	logCh, err := agent.Monitor("info", nil, nil)
+	doneCh := make(chan struct{})
+	logCh, err := agent.Monitor("info", doneCh, nil)
+	defer close(doneCh)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -279,7 +281,7 @@ func TestAgent_Monitor(t *testing.T) {
 		if !strings.Contains(log, "[INFO ] nomad: raft: Initial configuration") {
 			t.Fatalf("bad: %q", log)
 		}
-	case <-time.After(1000 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatalf("failed to get a log message")
 	}
 }
