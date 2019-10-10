@@ -81,3 +81,46 @@ func (l *logWriter) Write(p []byte) (n int, err error) {
 	}
 	return
 }
+
+type streamWriter struct {
+	logs  []string
+	logCh chan string
+	sync.Mutex
+	index        int
+	droppedCount int
+}
+
+func NewStreamWriter(buf int) *streamWriter {
+	return &streamWriter{
+		logs:  make([]string, buf),
+		logCh: make(chan string),
+		// logCh: make(chan string, buf),
+		index: 0,
+	}
+}
+
+func (d *streamWriter) Write(p []byte) (n int, err error) {
+	d.Lock()
+	defer d.Unlock()
+
+	// Strip off newlines at the end if there are any since we store
+	// individual log lines in the agent.
+	n = len(p)
+	if p[n-1] == '\n' {
+		p = p[:n-1]
+	}
+
+	d.logs[d.index] = string(p)
+	d.index = (d.index + 1) % len(d.logs)
+
+	d.HandleLog(string(p))
+	return
+}
+
+func (d *streamWriter) HandleLog(log string) {
+	select {
+	case d.logCh <- log:
+	default:
+		d.droppedCount++
+	}
+}

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -9,7 +10,6 @@ import (
 	"strings"
 
 	log "github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/logutils"
 	"github.com/hashicorp/nomad/acl"
 	"github.com/hashicorp/nomad/nomad/structs"
 	"github.com/hashicorp/serf/serf"
@@ -165,26 +165,35 @@ func (s *HTTPServer) AgentMonitor(resp http.ResponseWriter, req *http.Request) (
 		logLevel = "INFO"
 	}
 
-	// Create a level filter and flusher.
-	filter := LevelFilter()
-	filter.SetMinLevel(logutils.LogLevel(strings.ToUpper(logLevel)))
-
-	if !ValidateLevelFilter(filter.MinLevel, filter) {
-		return nil, CodedError(400, fmt.Sprintf("Unknown log level: %s", filter.MinLevel))
+	if log.LevelFromString(logLevel) == log.NoLevel {
+		return nil, CodedError(400, fmt.Sprintf("Unknown log level: %s", logLevel))
 	}
 
+	// Create flusher for streaming
 	flusher, ok := resp.(http.Flusher)
 	if !ok {
 		return nil, CodedError(400, "Streaming not supported")
 	}
 
+	// streamWriter := NewStreamWriter(512)
+	logwriter := NewLogWriter(512)
+	var buf bytes.Buffer
+
+	streamLog := log.New(&log.LoggerOptions{
+		Level:  log.LevelFromString(logLevel),
+		Output: logwriter,
+	})
+
 	handler := &httpLogHandler{
-		filter: filter,
 		logCh:  make(chan string, 512),
 		logger: s.agent.logger,
 	}
-	s.agent.logWriter.RegisterHandler(handler)
-	defer s.agent.logWriter.DeregisterHandler(handler)
+
+	s.agent.logger.RegisterSink(streamLog)
+	defer s.agent.logger.DeregisterSink(streamLog)
+	logwriter.RegisterHandler(handler)
+	defer logwriter.DeregisterHandler(handler)
+
 	notify := resp.(http.CloseNotifier).CloseNotify()
 
 	// Send header so client can start streaming body
@@ -198,7 +207,7 @@ func (s *HTTPServer) AgentMonitor(resp http.ResponseWriter, req *http.Request) (
 	for {
 		select {
 		case <-notify:
-			s.agent.logWriter.DeregisterHandler(handler)
+			s.agent.logger.DeregisterSink(streamLog)
 			if handler.droppedCount > 0 {
 				s.agent.logger.Warn(fmt.Sprintf("agent: Dropped %d logs during monitor request", handler.droppedCount))
 			}
@@ -211,18 +220,12 @@ func (s *HTTPServer) AgentMonitor(resp http.ResponseWriter, req *http.Request) (
 }
 
 type httpLogHandler struct {
-	filter       *logutils.LevelFilter
 	logCh        chan string
 	logger       log.Logger
 	droppedCount int
 }
 
 func (h *httpLogHandler) HandleLog(log string) {
-	// Check the log level
-	if !h.filter.Check([]byte(log)) {
-		return
-	}
-
 	// Do a non-blocking send
 	select {
 	case h.logCh <- log:

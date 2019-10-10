@@ -53,8 +53,8 @@ type Agent struct {
 	config     *Config
 	configLock sync.Mutex
 
-	logger     log.Logger
-	httpLogger log.Logger
+	logger     log.MultiSinkLogger
+	httpLogger log.MultiSinkLogger
 	logOutput  io.Writer
 	logWriter  *logWriter
 
@@ -88,7 +88,7 @@ type Agent struct {
 }
 
 // NewAgent is used to create a new agent with the given configuration
-func NewAgent(config *Config, logger log.Logger, logOutput io.Writer, logWriter *logWriter, inmem *metrics.InmemSink) (*Agent, error) {
+func NewAgent(config *Config, logger log.MultiSinkLogger, logOutput io.Writer, logWriter *logWriter, inmem *metrics.InmemSink) (*Agent, error) {
 	a := &Agent{
 		config:     config,
 		logOutput:  logOutput,
@@ -99,7 +99,7 @@ func NewAgent(config *Config, logger log.Logger, logOutput io.Writer, logWriter 
 
 	// Create the loggers
 	a.logger = logger
-	a.httpLogger = a.logger.ResetNamed("http")
+	a.httpLogger = a.logger.ResetNamedMultiSink("http")
 
 	// Global logger should match internal logger as much as possible
 	golog.SetFlags(golog.LstdFlags | golog.Lmicroseconds)

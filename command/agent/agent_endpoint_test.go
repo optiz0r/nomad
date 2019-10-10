@@ -274,17 +274,19 @@ func TestHTTP_AgentMonitor(t *testing.T) {
 			defer resp.Close()
 
 			go func() {
-				s.Server.logger.Debug("log that should not be sent")
-				s.Server.logger.Warn("log that should be sent")
 				_, err = s.Server.AgentMonitor(resp, req)
 				require.NoError(t, err)
 			}()
+			s.Server.logger.Debug("log that should not be sent")
+			s.Server.logger.Warn("log that should be sent")
 
 			testutil.WaitForResult(func() (bool, error) {
+				s.Server.logger.Debug("log that should not be sent")
+				s.Server.logger.Warn("log that should be sent")
 				got := resp.Body.String()
-				want := "[WARN ] http: log that should be sent"
+				want := "[WARN]  http: log that should be sent"
 				if strings.Contains(got, want) {
-					require.NotContains(t, resp.Body.String(), "[INFO ]")
+					require.NotContains(t, resp.Body.String(), "[DEBUG]")
 					return true, nil
 				}
 				return false, fmt.Errorf("missing expected log, got: %v, want: %v", got, want)
