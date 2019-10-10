@@ -199,7 +199,7 @@ func (s *HTTPServer) AgentMonitor(resp http.ResponseWriter, req *http.Request) (
 		case <-notify:
 			s.agent.logger.DeregisterSink(streamLog)
 			if streamWriter.droppedCount > 0 {
-				s.agent.logger.Warn(fmt.Sprintf("agent: Dropped %d logs during monitor request", streamWriter.droppedCount))
+				s.agent.logger.Warn(fmt.Sprintf("Dropped %d logs during monitor request", streamWriter.droppedCount))
 			}
 			return nil, nil
 		case log := <-streamWriter.logCh:
