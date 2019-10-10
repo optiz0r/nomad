@@ -1,13 +1,13 @@
 package agent
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 
 	log "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/acl"
@@ -175,24 +175,14 @@ func (s *HTTPServer) AgentMonitor(resp http.ResponseWriter, req *http.Request) (
 		return nil, CodedError(400, "Streaming not supported")
 	}
 
-	// streamWriter := NewStreamWriter(512)
-	logwriter := NewLogWriter(512)
-	var buf bytes.Buffer
+	streamWriter := newStreamWriter(512)
 
 	streamLog := log.New(&log.LoggerOptions{
 		Level:  log.LevelFromString(logLevel),
-		Output: logwriter,
+		Output: streamWriter,
 	})
-
-	handler := &httpLogHandler{
-		logCh:  make(chan string, 512),
-		logger: s.agent.logger,
-	}
-
 	s.agent.logger.RegisterSink(streamLog)
 	defer s.agent.logger.DeregisterSink(streamLog)
-	logwriter.RegisterHandler(handler)
-	defer logwriter.DeregisterHandler(handler)
 
 	notify := resp.(http.CloseNotifier).CloseNotify()
 
@@ -208,33 +198,55 @@ func (s *HTTPServer) AgentMonitor(resp http.ResponseWriter, req *http.Request) (
 		select {
 		case <-notify:
 			s.agent.logger.DeregisterSink(streamLog)
-			if handler.droppedCount > 0 {
-				s.agent.logger.Warn(fmt.Sprintf("agent: Dropped %d logs during monitor request", handler.droppedCount))
+			if streamWriter.droppedCount > 0 {
+				s.agent.logger.Warn(fmt.Sprintf("agent: Dropped %d logs during monitor request", streamWriter.droppedCount))
 			}
 			return nil, nil
-		case log := <-handler.logCh:
+		case log := <-streamWriter.logCh:
 			fmt.Fprintln(resp, log)
 			flusher.Flush()
 		}
 	}
 }
 
-type httpLogHandler struct {
+type streamWriter struct {
+	sync.Mutex
+	logs         []string
 	logCh        chan string
-	logger       log.Logger
+	index        int
 	droppedCount int
 }
 
-func (h *httpLogHandler) HandleLog(log string) {
-	// Do a non-blocking send
-	select {
-	case h.logCh <- log:
-	default:
-		// Just increment a counter for dropped logs to this handler; we can't log now
-		// because the lock is already held by the LogWriter invoking this
-		h.droppedCount++
+func newStreamWriter(buf int) *streamWriter {
+	return &streamWriter{
+		logs:  make([]string, buf),
+		logCh: make(chan string, buf),
+		index: 0,
 	}
 }
+
+func (d *streamWriter) Write(p []byte) (n int, err error) {
+	d.Lock()
+	defer d.Unlock()
+
+	// Strip off newlines at the end if there are any since we store
+	// individual log lines in the agent.
+	n = len(p)
+	if p[n-1] == '\n' {
+		p = p[:n-1]
+	}
+
+	d.logs[d.index] = string(p)
+	d.index = (d.index + 1) % len(d.logs)
+
+	select {
+	case d.logCh <- string(p):
+	default:
+		d.droppedCount++
+	}
+	return
+}
+
 func (s *HTTPServer) AgentForceLeaveRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	if req.Method != "PUT" && req.Method != "POST" {
 		return nil, CodedError(405, ErrInvalidMethod)
