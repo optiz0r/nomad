@@ -6,6 +6,8 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+
+	"github.com/mitchellh/cli"
 )
 
 type MonitorCommand struct {
@@ -35,6 +37,13 @@ func (c *MonitorCommand) Synopsis() string {
 func (c *MonitorCommand) Name() string { return "monitor" }
 
 func (c *MonitorCommand) Run(args []string) int {
+	c.Ui = &cli.PrefixedUi{
+		OutputPrefix: "    ",
+		InfoPrefix:   "    ",
+		ErrorPrefix:  "==> ",
+		Ui:           c.Ui,
+	}
+
 	var logLevel string
 
 	flags := c.Meta.FlagSet(c.Name(), FlagSetClient)

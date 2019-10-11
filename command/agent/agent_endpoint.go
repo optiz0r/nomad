@@ -176,7 +176,6 @@ func (s *HTTPServer) AgentMonitor(resp http.ResponseWriter, req *http.Request) (
 	}
 
 	streamWriter := newStreamWriter(512)
-
 	streamLog := log.New(&log.LoggerOptions{
 		Level:  log.LevelFromString(logLevel),
 		Output: streamWriter,
