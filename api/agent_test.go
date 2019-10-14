@@ -3,9 +3,10 @@ package api
 import (
 	"reflect"
 	"sort"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/hashicorp/nomad/api/internal/testutil"
 	"github.com/stretchr/testify/assert"
@@ -268,20 +269,26 @@ func TestAgent_Monitor(t *testing.T) {
 	agent := c.Agent()
 
 	doneCh := make(chan struct{})
-	logCh, err := agent.Monitor("info", doneCh, nil)
+	logCh, err := agent.Monitor("debug", doneCh, nil)
 	defer close(doneCh)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
+	// make a request to generate some logs
+	_, err = agent.Region()
+	require.NoError(t, err)
+
 	// Wait for the first log message and validate it
-	select {
-	case log := <-logCh:
-		// TODO: checkout why stub_asset.go help text returns here
-		if !strings.Contains(log, "[INFO ] nomad: raft: Initial configuration") {
-			t.Fatalf("bad: %q", log)
+	for {
+		select {
+		case log := <-logCh:
+			if log == " " {
+				return
+			}
+			require.Contains(t, log, "[DEBUG]")
+		case <-time.After(10 * time.Second):
+			require.Fail(t, "failed to get a log message")
 		}
-	case <-time.After(10 * time.Second):
-		t.Fatalf("failed to get a log message")
 	}
 }

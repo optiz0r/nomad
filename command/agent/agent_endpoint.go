@@ -187,10 +187,9 @@ func (s *HTTPServer) AgentMonitor(resp http.ResponseWriter, req *http.Request) (
 
 	// Send header so client can start streaming body
 	resp.WriteHeader(http.StatusOK)
-
-	// 0 byte write is needed before the Flush call so that if we are using
-	// a gzip stream it will go ahead and write out the HTTP response header
-	resp.Write([]byte(""))
+	// gziphanlder needs a byte to be written and flushed in order
+	// to tell gzip handler to ignore this response and not compress
+	resp.Write([]byte("\n"))
 	flusher.Flush()
 
 	for {
