@@ -45,10 +45,11 @@ func (c *MonitorCommand) Run(args []string) int {
 	}
 
 	var logLevel string
-
+	var nodeID string
 	flags := c.Meta.FlagSet(c.Name(), FlagSetClient)
 	flags.Usage = func() { c.Ui.Output(c.Help()) }
 	flags.StringVar(&logLevel, "log-level", "", "")
+	flags.StringVar(&nodeID, "node-id", "", "")
 
 	if err := flags.Parse(args); err != nil {
 		return 1
@@ -62,7 +63,7 @@ func (c *MonitorCommand) Run(args []string) int {
 	}
 
 	eventDoneCh := make(chan struct{})
-	logCh, err := client.Agent().Monitor(logLevel, eventDoneCh, nil)
+	logCh, err := client.Agent().Monitor(logLevel, nodeID, eventDoneCh, nil)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Error starting monitor: %s", err))
 		c.Ui.Error(commandErrorText(c))
