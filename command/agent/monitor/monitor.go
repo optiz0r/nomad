@@ -12,7 +12,7 @@ import (
 	"github.com/ugorji/go/codec"
 )
 
-type StreamWriter struct {
+type Monitor struct {
 	sync.Mutex
 	sink         log.MultiSinkLogger
 	logger       log.MultiSinkLogger
@@ -21,8 +21,8 @@ type StreamWriter struct {
 	droppedCount int
 }
 
-func NewStreamWriter(buf int, sink log.MultiSinkLogger, opts *log.LoggerOptions) *StreamWriter {
-	sw := &StreamWriter{
+func New(buf int, sink log.MultiSinkLogger, opts *log.LoggerOptions) *Monitor {
+	sw := &Monitor{
 		sink:  sink,
 		logCh: make(chan []byte, buf),
 		index: 0,
@@ -35,7 +35,7 @@ func NewStreamWriter(buf int, sink log.MultiSinkLogger, opts *log.LoggerOptions)
 	return sw
 }
 
-func (d *StreamWriter) Monitor(ctx context.Context, cancel context.CancelFunc,
+func (d *Monitor) Monitor(ctx context.Context, cancel context.CancelFunc,
 	conn io.ReadWriteCloser, enc *codec.Encoder, dec *codec.Decoder) {
 	d.sink.RegisterSink(d.logger)
 	defer d.sink.DeregisterSink(d.logger)
@@ -86,7 +86,7 @@ OUTER:
 
 // Write attemps to send latest log to logCh
 // it drops the log if channel is unavailable to receive
-func (d *StreamWriter) Write(p []byte) (n int, err error) {
+func (d *Monitor) Write(p []byte) (n int, err error) {
 	d.Lock()
 	defer d.Unlock()
 
