@@ -16,7 +16,6 @@ type StreamWriter struct {
 	sync.Mutex
 	sink         log.MultiSinkLogger
 	logger       log.MultiSinkLogger
-	logs         []string
 	logCh        chan []byte
 	index        int
 	droppedCount int
@@ -74,7 +73,6 @@ OUTER:
 func NewStreamWriter(buf int, sink log.MultiSinkLogger, opts *log.LoggerOptions) *StreamWriter {
 	sw := &StreamWriter{
 		sink:  sink,
-		logs:  make([]string, buf),
 		logCh: make(chan []byte, buf),
 		index: 0,
 	}
@@ -90,16 +88,6 @@ func NewStreamWriter(buf int, sink log.MultiSinkLogger, opts *log.LoggerOptions)
 func (d *StreamWriter) Write(p []byte) (n int, err error) {
 	d.Lock()
 	defer d.Unlock()
-
-	// Strip off newlines at the end if there are any since we store
-	// individual log lines in the agent.
-	// n = len(p)
-	// if p[n-1] == '\n' {
-	// 	p = p[:n-1]
-	// }
-
-	d.logs[d.index] = string(p)
-	d.index = (d.index + 1) % len(d.logs)
 
 	select {
 	case d.logCh <- p:

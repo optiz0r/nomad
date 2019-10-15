@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/nomad/acl"
@@ -73,42 +72,4 @@ func (m *Monitor) monitor(conn io.ReadWriteCloser) {
 
 	monitor.Monitor(ctx, cancel, conn, encoder, decoder)
 
-}
-
-type streamWriter struct {
-	sync.Mutex
-	logs         []string
-	logCh        chan []byte
-	index        int
-	droppedCount int
-}
-
-func newStreamWriter(buf int) *streamWriter {
-	return &streamWriter{
-		logs:  make([]string, buf),
-		logCh: make(chan []byte, buf),
-		index: 0,
-	}
-}
-
-func (d *streamWriter) Write(p []byte) (n int, err error) {
-	d.Lock()
-	defer d.Unlock()
-
-	// Strip off newlines at the end if there are any since we store
-	// individual log lines in the agent.
-	// n = len(p)
-	// if p[n-1] == '\n' {
-	// 	p = p[:n-1]
-	// }
-
-	d.logs[d.index] = string(p)
-	d.index = (d.index + 1) % len(d.logs)
-
-	select {
-	case d.logCh <- p:
-	default:
-		d.droppedCount++
-	}
-	return
 }
