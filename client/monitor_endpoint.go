@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/nomad/acl"
+	"github.com/hashicorp/nomad/command/agent/monitor"
 	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/nomad/structs"
 	"github.com/ugorji/go/codec"
@@ -65,51 +66,12 @@ func (m *Monitor) monitor(conn io.ReadWriteCloser) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	streamWriter := newStreamWriter(512)
-
-	streamLog := log.New(&log.LoggerOptions{
-		Level:  logLevel,
-		Output: streamWriter,
+	monitor := monitor.NewStreamWriter(512, m.c.logger, &log.LoggerOptions{
+		Level:      logLevel,
+		JSONFormat: false,
 	})
-	m.c.logger.RegisterSink(streamLog)
-	defer m.c.logger.DeregisterSink(streamLog)
 
-	go func() {
-		for {
-			if _, err := conn.Read(nil); err != nil {
-				// One end of the pipe was explicitly closed, exit cleanly
-				cancel()
-				return
-			}
-			select {
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	var streamErr error
-OUTER:
-	for {
-		select {
-		case log := <-streamWriter.logCh:
-			var resp cstructs.StreamErrWrapper
-
-			resp.Payload = log
-			if err := encoder.Encode(resp); err != nil {
-				streamErr = err
-				break OUTER
-			}
-			encoder.Reset(conn)
-		case <-ctx.Done():
-			break OUTER
-		}
-	}
-
-	if streamErr != nil {
-		handleStreamResultError(streamErr, helper.Int64ToPtr(500), encoder)
-		return
-	}
+	monitor.Monitor(ctx, cancel, conn, encoder, decoder)
 
 }
 
