@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 
 	log "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/acl"
@@ -59,6 +60,7 @@ func (m *Monitor) monitor(conn io.ReadWriteCloser) {
 		return
 	}
 
+	// Targeting a client so forward the request
 	if args.NodeID != "" {
 		nodeID := args.NodeID
 
@@ -126,16 +128,59 @@ func (m *Monitor) monitor(conn io.ReadWriteCloser) {
 
 		structs.Bridge(conn, clientConn)
 		return
-	} else {
+	}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+	// NodeID was empty, so monitor this current server
+	stopCh := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-		monitor := monitor.New(512, m.srv.logger, &log.LoggerOptions{
-			Level:      logLevel,
-			JSONFormat: false,
+	monitor := monitor.New(512, m.srv.logger, &log.LoggerOptions{
+		Level:      logLevel,
+		JSONFormat: false,
+	})
+
+	go func() {
+		if _, err := conn.Read(nil); err != nil {
+			close(stopCh)
+			cancel()
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		}
+	}()
+
+	logCh := monitor.Start(stopCh)
+
+	var streamErr error
+OUTER:
+	for {
+		select {
+		case log := <-logCh:
+			var resp cstructs.StreamErrWrapper
+			resp.Payload = log
+			if err := encoder.Encode(resp); err != nil {
+				streamErr = err
+				break OUTER
+			}
+			encoder.Reset(conn)
+		case <-ctx.Done():
+			break OUTER
+		}
+	}
+
+	if streamErr != nil {
+		// Nothing to do as conn is closed
+		if streamErr == io.EOF || strings.Contains(streamErr.Error(), "closed") {
+			return
+		}
+
+		// Attempt to send the error
+		encoder.Encode(&cstructs.StreamErrWrapper{
+			Error: cstructs.NewRpcError(streamErr, helper.Int64ToPtr(500)),
 		})
-
-		monitor.Monitor(ctx, cancel, conn, encoder, decoder)
+		return
 	}
 }

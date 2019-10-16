@@ -1,15 +1,9 @@
 package monitor
 
 import (
-	"context"
-	"io"
-	"strings"
 	"sync"
 
 	log "github.com/hashicorp/go-hclog"
-	cstructs "github.com/hashicorp/nomad/client/structs"
-	"github.com/hashicorp/nomad/helper"
-	"github.com/ugorji/go/codec"
 )
 
 type Monitor struct {
@@ -19,13 +13,15 @@ type Monitor struct {
 	logCh        chan []byte
 	index        int
 	droppedCount int
+	bufSize      int
 }
 
 func New(buf int, sink log.MultiSinkLogger, opts *log.LoggerOptions) *Monitor {
 	sw := &Monitor{
-		sink:  sink,
-		logCh: make(chan []byte, buf),
-		index: 0,
+		sink:    sink,
+		logCh:   make(chan []byte, buf),
+		index:   0,
+		bufSize: buf,
 	}
 
 	opts.Output = sw
@@ -35,53 +31,24 @@ func New(buf int, sink log.MultiSinkLogger, opts *log.LoggerOptions) *Monitor {
 	return sw
 }
 
-func (d *Monitor) Monitor(ctx context.Context, cancel context.CancelFunc,
-	conn io.ReadWriteCloser, enc *codec.Encoder, dec *codec.Decoder) {
+func (d *Monitor) Start(stopCh <-chan struct{}) chan []byte {
 	d.sink.RegisterSink(d.logger)
-	defer d.sink.DeregisterSink(d.logger)
 
-	// detect the remote side closing
+	logCh := make(chan []byte, d.bufSize)
 	go func() {
-		if _, err := conn.Read(nil); err != nil {
-			cancel()
-			return
-		}
-		select {
-		case <-ctx.Done():
-			return
+		for {
+			select {
+			case log := <-d.logCh:
+				logCh <- log
+			case <-stopCh:
+				d.sink.DeregisterSink(d.logger)
+				close(d.logCh)
+				return
+			}
 		}
 	}()
 
-	var streamErr error
-OUTER:
-	for {
-		select {
-		case log := <-d.logCh:
-
-			var resp cstructs.StreamErrWrapper
-			resp.Payload = log
-			if err := enc.Encode(resp); err != nil {
-				streamErr = err
-				break OUTER
-			}
-			enc.Reset(conn)
-		case <-ctx.Done():
-			break OUTER
-		}
-	}
-
-	if streamErr != nil {
-		// Nothing to do as conn is closed
-		if streamErr == io.EOF || strings.Contains(streamErr.Error(), "closed") {
-			return
-		}
-
-		// Attempt to send the error
-		enc.Encode(&cstructs.StreamErrWrapper{
-			Error: cstructs.NewRpcError(streamErr, helper.Int64ToPtr(500)),
-		})
-		return
-	}
+	return logCh
 }
 
 // Write attemps to send latest log to logCh
