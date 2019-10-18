@@ -135,7 +135,7 @@ func (m *Monitor) monitor(conn io.ReadWriteCloser) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	monitor := monitor.New(512, m.srv.logger, &log.LoggerOptions{
+	monitor := monitor.New(512, m.srv.logger, log.SinkOptions{
 		Level:      logLevel,
 		JSONFormat: false,
 	})

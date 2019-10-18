@@ -163,7 +163,7 @@ type Client struct {
 	configLock sync.RWMutex
 
 	logger    hclog.MultiSinkLogger
-	rpcLogger hclog.MultiSinkLogger
+	rpcLogger hclog.Logger
 
 	connPool *pool.ConnPool
 
@@ -303,7 +303,7 @@ func NewClient(cfg *config.Config, consulCatalog consul.CatalogAPI, consulServic
 	}
 
 	// Create the logger
-	logger := cfg.Logger.ResetNamed("client").(hclog.MultiSinkLogger)
+	logger := cfg.Logger.ResetNamedMultiSink("client")
 
 	// Create the client
 	c := &Client{
@@ -315,7 +315,7 @@ func NewClient(cfg *config.Config, consulCatalog consul.CatalogAPI, consulServic
 		tlsWrap:              tlsWrap,
 		streamingRpcs:        structs.NewStreamingRpcRegistry(),
 		logger:               logger,
-		rpcLogger:            logger.Named("rpc").(hclog.MultiSinkLogger),
+		rpcLogger:            logger.Named("rpc"),
 		allocs:               make(map[string]AllocRunner),
 		allocUpdates:         make(chan *structs.Allocation, 64),
 		shutdownCh:           make(chan struct{}),

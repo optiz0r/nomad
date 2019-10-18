@@ -54,7 +54,7 @@ type Agent struct {
 	configLock sync.Mutex
 
 	logger     log.MultiSinkLogger
-	httpLogger log.MultiSinkLogger
+	httpLogger log.Logger
 	logOutput  io.Writer
 
 	// consulService is Nomad's custom Consul client for managing services
@@ -97,7 +97,7 @@ func NewAgent(config *Config, logger log.MultiSinkLogger, logOutput io.Writer, i
 
 	// Create the loggers
 	a.logger = logger
-	a.httpLogger = a.logger.ResetNamed("http").(log.MultiSinkLogger)
+	a.httpLogger = a.logger.ResetNamed("http")
 
 	// Global logger should match internal logger as much as possible
 	golog.SetFlags(golog.LstdFlags | golog.Lmicroseconds)

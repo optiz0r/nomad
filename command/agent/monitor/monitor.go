@@ -8,7 +8,7 @@ import (
 
 type Monitor struct {
 	sync.Mutex
-	sink         log.MultiSinkLogger
+	sink         *log.Sink
 	logger       log.MultiSinkLogger
 	logCh        chan []byte
 	index        int
@@ -16,23 +16,26 @@ type Monitor struct {
 	bufSize      int
 }
 
-func New(buf int, sink log.MultiSinkLogger, opts *log.LoggerOptions) *Monitor {
+func New(buf int, logger log.MultiSinkLogger, opts log.SinkOptions) *Monitor {
 	sw := &Monitor{
-		sink:    sink,
+		logger:  logger,
 		logCh:   make(chan []byte, buf),
 		index:   0,
 		bufSize: buf,
 	}
 
-	opts.Output = sw
-	logger := log.New(opts).(log.MultiSinkLogger)
-	sw.logger = logger
+	sink := log.NewSink(&log.SinkOptions{
+		Level:      opts.Level,
+		JSONFormat: opts.JSONFormat,
+		Output:     sw,
+	})
 
+	sw.sink = sink
 	return sw
 }
 
-func (d *Monitor) Start(stopCh <-chan struct{}) chan []byte {
-	d.sink.RegisterSink(d.logger)
+func (d *Monitor) Start(stopCh <-chan struct{}) <-chan []byte {
+	d.logger.RegisterSink(d.sink)
 
 	logCh := make(chan []byte, d.bufSize)
 	go func() {
@@ -41,7 +44,7 @@ func (d *Monitor) Start(stopCh <-chan struct{}) chan []byte {
 			case log := <-d.logCh:
 				logCh <- log
 			case <-stopCh:
-				d.sink.DeregisterSink(d.logger)
+				d.logger.DeregisterSink(d.sink)
 				close(d.logCh)
 				return
 			}
@@ -54,12 +57,14 @@ func (d *Monitor) Start(stopCh <-chan struct{}) chan []byte {
 // Write attemps to send latest log to logCh
 // it drops the log if channel is unavailable to receive
 func (d *Monitor) Write(p []byte) (n int, err error) {
-	d.Lock()
-	defer d.Unlock()
+	bytes := make([]byte, len(p))
+	copy(bytes, p)
 
 	select {
-	case d.logCh <- p:
+	case d.logCh <- bytes:
 	default:
+		d.Lock()
+		defer d.Unlock()
 		d.droppedCount++
 		if d.droppedCount > 10 {
 			d.logger.Warn("Monitor dropped %d logs during monitor request", d.droppedCount)

@@ -291,7 +291,7 @@ func NewServer(config *Config, consulCatalog consul.CatalogAPI) (*Server, error)
 	}
 
 	// Create the logger
-	logger := config.Logger.ResetNamed("nomad").(log.MultiSinkLogger)
+	logger := config.Logger.ResetNamedMultiSink("nomad")
 
 	// Create the server
 	s := &Server{
